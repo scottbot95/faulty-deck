@@ -7,6 +7,7 @@ runner = "probe-rs run --chip=esp32s3 --preverify --always-print-stacktrace --no
 [build]
 rustflags = [
   "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-Wl,--no-warn-rwx-segments",
 ]
 
 target = "xtensa-esp32s3-none-elf"

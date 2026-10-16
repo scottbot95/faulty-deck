@@ -10,8 +10,14 @@
 use defmt::{error, info};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-use esp_hal::clock::CpuClock;
+use esp_hal::time::Rate;
+use esp_hal::{clock::CpuClock, rmt::Rmt};
+use esp_hal::analog::adc::{Adc, AdcCalBasic, AdcConfig, Attenuation};
+use esp_hal::gpio::{Input, InputConfig, Pull};
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal_smartled::{RmtSmartLeds, WS2812_TIMING, buffer_size, color_order};
+use smart_leds::{RGB8, brightness, SmartLedsWriteAsync};
+use smart_leds::hsv::{hsv2rgb, Hsv};
 
 #[panic_handler]
 fn panic(panic_info: &core::panic::PanicInfo) -> ! {
@@ -37,6 +43,8 @@ async fn main(spawner: Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
+    let rng = esp_hal::rng::Rng::new();
+
     // The following pins are used to bootstrap the chip. They are available
     // for use, but check the datasheet of the module for more information on them.
     // - GPIO0
@@ -59,15 +67,67 @@ async fn main(spawner: Spawner) -> ! {
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
+    let mut adc1_config = AdcConfig::new();
+    let mut adc_pin = adc1_config.enable_pin_with_cal::<_, AdcCalBasic<_>>(peripherals.GPIO4, Attenuation::_11dB);
+    let mut adc1 = Adc::new(peripherals.ADC1, adc1_config).into_async();
+
+    let button = Input::new(peripherals.GPIO21, InputConfig::default().with_pull(Pull::Up));
+
     info!("Embassy initialized!");
 
     // TODO: Spawn some tasks
     let _ = spawner;
 
-    loop {
-        info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
-    }
+    let rate = Rate::from_mhz(80);
+    let rmt = Rmt::new(peripherals.RMT, rate)
+        .unwrap()
+        .into_async();
 
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.2.2/examples
+    let mut led = RmtSmartLeds::<
+        { buffer_size::<RGB8>(1) },
+        _,
+        RGB8,
+        color_order::Grb
+    >::new(
+        WS2812_TIMING,
+        rmt.channel0,
+        peripherals.GPIO48,
+        rate
+    ).unwrap();
+
+    loop {
+        if button.is_low() {
+            info!("Button held, skipping");
+            led.write(brightness([RGB8::default()].into_iter(), 1))
+                .await
+                .unwrap();
+            Timer::after(Duration::from_millis(50)).await;
+            continue;
+        }
+
+        let raw_value = adc1.read_oneshot(&mut adc_pin).await;
+        let hue = ((raw_value as u32 * 240 / 360) >> 4) as u8;
+        info!("ADC value: {}, hue: {}", raw_value, hue);
+        let color = hsv2rgb(Hsv {
+            hue,
+            sat: u8::MAX,
+            val: u8::MAX,
+        });
+        info!("Color: r:{} g:{} b:{}", color.r, color.g, color.b);
+        led.write(brightness([color].into_iter(), 1))
+            .await
+            .unwrap();
+
+        // let bytes = rng.random().to_be_bytes();
+        // let color = RGB8 {
+        //     r: bytes[1],
+        //     g: bytes[2],
+        //     b: bytes[3],
+        // };
+        // info!("Color: r:{} g:{} b:{}", color.r, color.g, color.b);
+        // led.write(brightness([color].into_iter(), 1))
+        //     .await
+        //     .unwrap();
+        Timer::after(Duration::from_millis(50)).await;
+    }
 }
