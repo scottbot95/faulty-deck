@@ -3,16 +3,19 @@
   <component name="JsonSchemaMappingsProjectConfiguration">
     <state>
       <map>
-        <entry key="Cargo Config">
+        <entry key="Rust toolchain">
           <value>
             <SchemaInfo>
-              <option name="name" value="Cargo Config" />
-              <option name="relativePathToSchema" value="https://www.schemastore.org/cargo-config.json" />
+              <option name="name" value="Rust toolchain" />
+              <option name="relativePathToSchema" value="https://www.schemastore.org/rust-toolchain.json" />
               <option name="applicationDefined" value="true" />
               <option name="patterns">
                 <list>
                   <Item>
-                    <option name="path" value=".cargo/config.toml" />
+                    <option name="path" value="firmware/rust-toolchain.toml" />
+                  </Item>
+                  <Item>
+                    <option name="path" value="rust-toolchain.toml" />
                   </Item>
                 </list>
               </option>

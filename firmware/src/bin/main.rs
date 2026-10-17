@@ -18,6 +18,7 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal_smartled::{RmtSmartLeds, WS2812_TIMING, buffer_size, color_order};
 use smart_leds::{RGB8, brightness, SmartLedsWriteAsync};
 use smart_leds::hsv::{hsv2rgb, Hsv};
+use protocol::reading_to_hue;
 
 #[panic_handler]
 fn panic(panic_info: &core::panic::PanicInfo) -> ! {
@@ -106,7 +107,7 @@ async fn main(spawner: Spawner) -> ! {
         }
 
         let raw_value = adc1.read_oneshot(&mut adc_pin).await;
-        let hue = ((raw_value as u32 * 240 / 360) >> 4) as u8;
+        let hue = reading_to_hue(raw_value);
         info!("ADC value: {}, hue: {}", raw_value, hue);
         let color = hsv2rgb(Hsv {
             hue,
