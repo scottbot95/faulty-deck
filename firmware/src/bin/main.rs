@@ -167,7 +167,7 @@ async fn hid_out_drain(mut hid: HidOut) {
     }
 }
 
-#[embassy_executor::task(pool_size = BUTTON_COUNT as usize)]
+#[embassy_executor::task(pool_size = BUTTON_COUNT)]
 async fn button_task(mut pin: Input<'static>, id: u8) {
     // Configure initial button state
     firmware::state::update(|s| s.set_button(id, pin.is_low()));

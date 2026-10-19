@@ -1,0 +1,17 @@
+[package]
+name = "daemon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+protocol.path = "../protocol"
+
+anyhow = "1"
+clap = { version = "4.6", features = ["derive"] }
+clap-verbosity-flag = { version = "3.0", default-features = false, features = ["tracing"] }
+futures-lite = "2.6"
+tokio = { version = "1", features = ["full"]}
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+async-hid = { version = "0.5", default-features = false, features = ["tokio", "winrt"] }
