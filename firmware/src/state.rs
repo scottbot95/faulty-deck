@@ -21,6 +21,10 @@ pub async fn changed() {
     CHANGED.wait().await;
 }
 
+pub fn force_change_signal() {
+    CHANGED.signal(());
+}
+
 /// Updates the device state. Will signal [`changed`] if the state was actually modified
 pub fn update<R>(f: impl FnOnce(&mut DeviceState) -> R) -> R {
     let (changed, result) = CURRENT.lock(|cell| {
@@ -32,7 +36,7 @@ pub fn update<R>(f: impl FnOnce(&mut DeviceState) -> R) -> R {
     });
     if changed {
         let already_signaled = CHANGED.signaled();
-        log::info!("state_update: Firing change signal {}", already_signaled);
+        log::info!("state_update: Firing change signal. Backlogged: {}", already_signaled);
         CHANGED.signal(());
     }
     result

@@ -1,0 +1,5 @@
+[device.buttons]
+0.tap = { action = "key", chord = ["ctrl", {char="a"}] }
+
+[device.sliders]
+0.sink = "some sink"

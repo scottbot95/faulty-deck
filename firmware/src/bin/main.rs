@@ -22,7 +22,8 @@ use log::{error, info, trace, warn};
 use smart_leds::{brightness, colors};
 use static_cell::StaticCell;
 use firmware::smart_led::{unsafe_write_led, SmartLed, SMART_LED_RATE};
-use protocol::{DeviceInfo, PROTOCOL_VERSION, REPORT_LEN};
+use firmware::state;
+use protocol::{Command, DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN};
 use firmware::usb::{init_usb, Device, HidIn, HidOut};
 
 #[panic_handler]
@@ -40,8 +41,8 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 // TODO load this from Cargo.toml. Maybe need to write a source module in build.rs?
 const FIRMWARE_VERSION: (u8, u8, u8) = (0, 1, 0);
-// 1% of the availalbe range
-const SLIDER_DEADBAND: u16 = 4096 / 100; // TODO make this configurable
+// 1% of the available range (max+1 since we need the size of the range and zero is included)
+const SLIDER_DEADBAND: u16 = (MAX_SLIDER_VALUE + 1) / 100; // TODO make this configurable
 const BUTTON_COUNT: usize = 4;
 const SLIDER_COUNT: u8 = 3;
 const DEBOUNCE: Duration = Duration::from_millis(10);
@@ -148,8 +149,12 @@ async fn hid_writer_task(mut hid: HidIn) {
     }
 }
 
-/// Consumes events from the HID device and discards them since we don't receive any commands from the host.
+/// Consumes commands from the HID host and executes them
 #[embassy_executor::task]
+#[allow(
+    clippy::large_stack_frames,
+    reason = "IDK why this needs so much..."
+)]
 async fn hid_out_drain(mut hid: HidOut) {
     let mut buf = [0u8; REPORT_LEN];
     loop {
@@ -157,6 +162,16 @@ async fn hid_out_drain(mut hid: HidOut) {
         match result {
             Ok(_) => {
                 trace!("hid_out_drain: HID output report received");
+                let Ok(command) = protocol::decode::<Command>(&buf) else {
+                    error!("hid_out_drain: failed to decode HID output report");
+                    continue;
+                };
+                match command {
+                    Command::Sync => {
+                        // TODO actually refetch state instead of relying on existing state
+                        state::force_change_signal();
+                    }
+                }
             }
             Err(e) => {
                 warn!("hid_out_drain: HID output report failed. Waiting for ready: {:?}", e);

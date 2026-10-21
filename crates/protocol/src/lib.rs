@@ -3,6 +3,8 @@
 #[cfg(feature = "std")]
 extern crate std;
 
+use core::array::TryFromSliceError;
+use core::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 pub fn reading_to_hue(raw_value: u16) -> u8 {
@@ -13,6 +15,32 @@ pub const PROTOCOL_VERSION: u16 = 1;
 pub const REPORT_LEN: usize = 64;
 pub const MAX_SLIDERS: usize = 4;
 
+pub const MAX_SLIDER_VALUE: u16 = 4095;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct Serial([u8; 6]);
+
+impl TryFrom<&[u8]> for Serial {
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let serial = value.try_into()?;
+        Ok(Serial(serial))
+    }
+}
+
+impl Display for Serial {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        for (i, b) in self.0.iter().enumerate() {
+            if i != 0 {
+                f.write_str(":")?;
+            }
+            write!(f, "{b:02x}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Input report: the complete current state of the controls.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceState {
@@ -20,6 +48,13 @@ pub struct DeviceState {
     pub buttons: u16,
     /// Array of slider values. Not all sliders are necessarily used.
     pub sliders: [u16; MAX_SLIDERS],
+}
+
+/// Output report: a command to the device from the daemon
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Command {
+    /// Force a resync, causing the device to send a full state report
+    Sync
 }
 
 impl DeviceState {
@@ -56,13 +91,14 @@ pub struct DeviceInfo {
     pub sliders: u8,
 
     /// Serial number of the device. Typically just the MAC address efuse
-    pub serial: [u8; 6],
+    pub serial: Serial,
 }
 
 pub type Report = [u8; REPORT_LEN];
 
 /// Encodes a value into a [`Report`].
 pub fn encode<T: Serialize>(value: &T) -> Result<Report, postcard::Error> {
+    // TODO maybe optimize the report size?
     let mut report = [0u8; REPORT_LEN];
     postcard::to_slice(value, &mut report)?;
     Ok(report)
