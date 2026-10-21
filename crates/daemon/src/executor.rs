@@ -1,13 +1,12 @@
-use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::Stdio;
 use anyhow::{Context, Result};
-use enigo::Key;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use tracing::{error, warn, info, info_span, Instrument};
 use daemon_core::action::{Action, AudioTarget, Volume, VolumeOp};
+use daemon_core::key::KeyCode;
 
 pub trait KeyInjector {
 
@@ -16,7 +15,7 @@ pub trait KeyInjector {
     /// Must press each key in the chord sequentially and then release each key in reverse order.
     ///
     /// **NOTE**: implementors may enter keys simultaneously, but NEVER out-of-order.
-    fn chord(&mut self, keys: &[Key]) -> Result<()>;
+    fn chord(&mut self, keys: &[KeyCode]) -> Result<()>;
 
     /// Enter text (eg like pasting the clipboard).
     fn text(&mut self, text: &str) -> Result<()>;
@@ -115,5 +114,26 @@ async fn run_command(program: &PathBuf, args: &[String], cwd: Option<&PathBuf>, 
         fut.await
     } else {
         tokio::spawn(fut).await?
+    }
+}
+
+pub(crate) struct LoggingKeyInjector;
+impl KeyInjector for LoggingKeyInjector {
+    fn chord(&mut self, keys: &[KeyCode]) -> Result<()> {
+        info!("Sending chord: {:?}", keys);
+        Ok(())
+    }
+
+    fn text(&mut self, text: &str) -> Result<()> {
+        info!("Sending text: {:?}", text);
+        Ok(())
+    }
+}
+
+pub(crate) struct LoggingAudio;
+impl AudioBackend for LoggingAudio {
+    async fn set(&self, target: &AudioTarget, volume: Volume) -> Result<()> {
+        info!("Setting volume for {:?} to {}", target, volume);
+        Ok(())
     }
 }

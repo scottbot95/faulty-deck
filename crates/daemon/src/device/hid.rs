@@ -1,4 +1,4 @@
-use anyhow::{Context, Error};
+use anyhow::Context;
 use async_hid::{AsyncHidFeatureHandle, AsyncHidRead, AsyncHidWrite, DeviceEvent, DeviceFeatureHandle, DeviceId, DeviceReaderWriter, HidBackend};
 use futures_lite::{Stream, StreamExt};
 use tracing::{debug, trace};

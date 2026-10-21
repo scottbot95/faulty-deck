@@ -1,14 +1,14 @@
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
-use enigo::Key;
 use serde::{Deserialize, Serialize};
+use crate::key::KeyCode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
     /// A single key chord. Will send press events for each key in order
     /// then release events for each key in reverse order.
-    Key { chord: Vec<Key> },
+    Key { chord: Vec<KeyCode> },
     /// Send a string of text to the system.
     Text { text: String },
     /// Run a program with the given arguments/working directory.

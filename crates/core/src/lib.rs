@@ -5,6 +5,7 @@ pub mod event;
 pub mod tracker;
 pub mod action;
 pub mod config;
+pub mod key;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct ButtonId(pub u8);

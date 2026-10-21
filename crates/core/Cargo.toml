@@ -6,8 +6,5 @@ edition = "2024"
 [dependencies]
 protocol.path = "../protocol"
 
-anyhow = "1"
 serde = { version = "1", features = ["derive"] }
-
-# TODO maybe shouldn't have this in core....
-enigo = { version = "0.6", features = ["serde"] }
+strum = { version = "0.28", features = ["derive"] }
