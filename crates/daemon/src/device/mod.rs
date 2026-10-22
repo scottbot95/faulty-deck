@@ -88,6 +88,7 @@ impl<S: DeviceSource> DeviceManager<S> {
     }
 
     pub async fn run(mut self) -> Result<()> {
+        info!("Waiting for device...");
         let mut hotplug = pin!(self.source.hotplug().await?);
         loop {
             select! {
@@ -104,6 +105,7 @@ impl<S: DeviceSource> DeviceManager<S> {
     async fn handle_hotplug_event(&mut self, event: HotplugEvent) {
         match event {
             HotplugEvent::Arrived(device_id) => {
+                debug!("Device {:?} arrived. Attempting to connect", device_id);
                 // Open a new handle to the device
                 match self.start_session(device_id.clone()).await {
                     Ok(session) => {
@@ -121,7 +123,7 @@ impl<S: DeviceSource> DeviceManager<S> {
             }
             HotplugEvent::Left(device) => {
                 if let Some(existing) = self.sessions.remove(&device) {
-                    debug!("Device {} disconnected. Aborting session.", existing.serial);
+                    info!("Device {} disconnected. Aborting session.", existing.serial);
                     existing.abort.abort();
                 }
             }
@@ -151,6 +153,8 @@ impl<S: DeviceSource> DeviceManager<S> {
         let abort = self.tasks.spawn(async move {
             (device_id, session.run().await)
         });
+
+        info!("Connected to device {}", serial);
         Ok(SessionHandle { serial, abort })
     }
 }
