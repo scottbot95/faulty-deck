@@ -16,10 +16,12 @@ pub enum Action {
         /// Program to execute
         program: PathBuf,
         /// Arguments to pass to the program.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         args: Vec<String>,
         /// Working directory to execute the program in. Inherits from the daemon directory if None.
         cwd: Option<PathBuf>,
         /// Wait for the program to exit before continuing processing **ANY** other actions.
+        #[serde(default)]
         wait: bool,
     },
     Volume { target: AudioTarget, op: VolumeOp },

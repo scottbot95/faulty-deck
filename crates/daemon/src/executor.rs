@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
-use tracing::{error, warn, info, info_span, Instrument};
+use tracing::{error, warn, info, info_span, Instrument, debug};
 use daemon_core::action::{Action, AudioTarget, Volume, VolumeOp};
 use daemon_core::key::KeyCode;
 
@@ -84,8 +84,9 @@ async fn run_command(program: &PathBuf, args: &[String], cwd: Option<&PathBuf>, 
     let mut cmd = Command::new(program);
     cmd
         .args(args)
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .stdin(Stdio::piped())
+        .stdin(Stdio::null())
         .kill_on_drop(true);
 
     if let Some(cwd) = cwd {
@@ -93,6 +94,7 @@ async fn run_command(program: &PathBuf, args: &[String], cwd: Option<&PathBuf>, 
     }
 
     let fut = async move {
+        debug!("Running {:?}", cmd);
         let mut child = cmd.spawn()?;
 
         let stdout = child.stdout.take().context("Failed to capture stdout")?;

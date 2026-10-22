@@ -1,5 +1,9 @@
 [device.buttons]
-0.tap = { action = "key", chord = ["ctrl", "a"] }
+#0.tap = { action = "key", chord = ["ctrl", "a"] }
+[device.buttons.0.tap]
+action = "command"
+program = "audio-headphones"
+
 
 [device.sliders]
 0.sink = "some sink"
