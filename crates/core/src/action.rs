@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use crate::key::KeyCode;
@@ -38,9 +39,10 @@ pub enum AudioTarget {
     // App(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum VolumeOp {
     Set(Volume),
+    ToggleMute,
 }
 
 /// Represents the volume level for audio actions.
@@ -56,5 +58,13 @@ impl Volume {
 impl Display for Volume {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:.0}%", self.0 * 100.0)
+    }
+}
+
+impl Deref for Volume {
+    type Target = f32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }

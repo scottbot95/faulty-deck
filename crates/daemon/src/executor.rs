@@ -22,9 +22,8 @@ pub trait KeyInjector {
 }
 
 pub trait AudioBackend {
-    /// Set the volume of an [`AudioTarget`].
-    async fn set(&self, target: &AudioTarget, volume: Volume) -> Result<()>;
-
+    /// Applies a volume operation to an [`AudioTarget`].
+    async fn apply(&self, target: &AudioTarget, op: &VolumeOp) -> Result<()>;
 }
 
 
@@ -52,10 +51,8 @@ impl<K: KeyInjector, A: AudioBackend> Executor<K, A> {
         match action {
             Action::Key { chord } => self.keys.chord(chord),
             Action::Text { text } => self.keys.text(text.as_str()),
-            Action::Volume { target, op } => match op {
-                VolumeOp::Set(volume) => {
-                    self.audio.set(&target, *volume).await
-                }
+            Action::Volume { target, op } => {
+                self.audio.apply(target, op).await
             },
             Action::Command { program, args, cwd, wait } => {
                 run_command(program, args, cwd.as_ref(), *wait).await
@@ -134,8 +131,8 @@ impl KeyInjector for LoggingKeyInjector {
 
 pub(crate) struct LoggingAudio;
 impl AudioBackend for LoggingAudio {
-    async fn set(&self, target: &AudioTarget, volume: Volume) -> Result<()> {
-        info!("Setting volume for {:?} to {}", target, volume);
+    async fn apply(&self, target: &AudioTarget, op: &VolumeOp) -> Result<()> {
+        info!("Applying volume operation {:?} to {:?}", op, target);
         Ok(())
     }
 }

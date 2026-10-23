@@ -7,6 +7,7 @@ use crate::device::hid::AsyncHidSource;
 use crate::executor::{Executor, LoggingAudio, LoggingKeyInjector};
 use tokio::sync::{broadcast, mpsc};
 use crate::platform::enigo::EnigoKeyInjector;
+use crate::platform::linux::PulseAudioBackend;
 
 mod event;
 mod device;
@@ -40,7 +41,7 @@ pub async fn run(opts: Opts) -> anyhow::Result<()> {
 
     let executor = Executor::new(
         EnigoKeyInjector::new()?,
-        LoggingAudio,
+        PulseAudioBackend::spawn(),
         dispatch_rx
     );
     let manager = DeviceManager::new(
