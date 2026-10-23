@@ -23,7 +23,7 @@ use smart_leds::{brightness, colors};
 use static_cell::StaticCell;
 use firmware::smart_led::{unsafe_write_led, SmartLed, SMART_LED_RATE};
 use firmware::state;
-use protocol::{Command, DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN};
+use protocol::{Command, DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN, VERSION_STRING_MAX_LEN};
 use firmware::usb::{init_usb, Device, HidIn, HidOut};
 
 #[panic_handler]
@@ -39,8 +39,13 @@ fn panic(panic_info: &core::panic::PanicInfo) -> ! {
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-// TODO load this from Cargo.toml. Maybe need to write a source module in build.rs?
-const FIRMWARE_VERSION: (u8, u8, u8) = (0, 1, 0);
+const FULL_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+const _: () = assert!(
+    FULL_VERSION.len() <= VERSION_STRING_MAX_LEN,
+    "CARGO_PKG_VERSION is longer than VERSION_STR_CAP: shorten the version or raise the capacity"
+);
+
 // 1% of the available range (max+1 since we need the size of the range and zero is included)
 const SLIDER_DEADBAND: u16 = (MAX_SLIDER_VALUE + 1) / 100;
 const BUTTON_COUNT: usize = 4;
@@ -89,17 +94,17 @@ async fn main(spawner: Spawner) {
 
     let mac = esp_hal::efuse::base_mac_address();
     let serial = serial_string(&mac);
-
-    info!("boot: fw=v{}.{}.{} serial={serial}", FIRMWARE_VERSION.0, FIRMWARE_VERSION.1, FIRMWARE_VERSION.2);
-    led.write(colors::YELLOW, 10).await;
-
     let info = DeviceInfo {
         protocol_version: PROTOCOL_VERSION,
-        firmware_version: FIRMWARE_VERSION,
+        firmware_version: String::try_from(FULL_VERSION).unwrap(),
         buttons: button_pins.len() as u8,
         sliders: SLIDER_COUNT,
         serial: mac.as_bytes().try_into().unwrap(),
     };
+
+    info!("boot: fw=v{} serial={serial}", info.firmware_version);
+    led.write(colors::YELLOW, 10).await;
+
     let usb = init_usb(peripherals.USB_FS, peripherals.GPIO20, peripherals.GPIO19, serial, &info)
         .expect("Failed to initialize USB");
 

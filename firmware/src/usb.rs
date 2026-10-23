@@ -44,7 +44,7 @@ impl RequestHandler for FeatureHandler {
             _ => return None,
         };
         let n = report.len().min(buf.len());
-        buf[..n].copy_from_slice(&self.device_info[..n]);
+        buf[..n].copy_from_slice(&report[..n]);
         Some(n)
     }
 

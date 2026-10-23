@@ -16,6 +16,7 @@ pub const REPORT_LEN: usize = 64;
 pub const MAX_SLIDERS: usize = 4;
 
 pub const MAX_SLIDER_VALUE: u16 = 4095;
+pub const VERSION_STRING_MAX_LEN: usize = 16;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Serial([u8; 6]);
@@ -74,7 +75,7 @@ impl DeviceState {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfo {
     /// Protocol version spoken by the device
     pub protocol_version: u16,
@@ -82,7 +83,7 @@ pub struct DeviceInfo {
     /// Firmware version of the device
     ///
     /// (Major, Minor, Patch)
-    pub firmware_version: (u8, u8, u8),
+    pub firmware_version: heapless::String<VERSION_STRING_MAX_LEN>,
 
     /// Number of buttons on the device
     pub buttons: u8,

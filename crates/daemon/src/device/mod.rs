@@ -154,7 +154,6 @@ impl<S: DeviceSource> DeviceManager<S> {
             (device_id, session.run().await)
         });
 
-        info!("Connected to device {}", serial);
         Ok(SessionHandle { serial, abort })
     }
 }
@@ -175,7 +174,12 @@ pub struct DeviceSession<H: DeviceHandle> {
 impl<H: DeviceHandle> DeviceSession<H> {
     async fn from_handle(channels: SessionChannels, mut handle: H) -> Result<Self> {
         let device_info = handle.info().await?;
-        info!("Device connected {:?}", device_info);
+        info!(
+            serial=%device_info.serial,
+            "Device connected. Protocol version: {} Firmware version: {}",
+            device_info.protocol_version,
+            device_info.firmware_version,
+        );
 
         if device_info.protocol_version != PROTOCOL_VERSION {
             warn!("Device using unsupported protocol version. Required: {}. {:?}", PROTOCOL_VERSION, device_info);
@@ -183,7 +187,7 @@ impl<H: DeviceHandle> DeviceSession<H> {
         }
 
         let mut this = Self {
-            device_info,
+            device_info: device_info.clone(),
             handle,
             tracker: DeviceTracker::new(device_info),
             channels,
