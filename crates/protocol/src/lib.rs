@@ -98,7 +98,6 @@ pub type Report = [u8; REPORT_LEN];
 
 /// Encodes a value into a [`Report`].
 pub fn encode<T: Serialize>(value: &T) -> Result<Report, postcard::Error> {
-    // TODO maybe optimize the report size?
     let mut report = [0u8; REPORT_LEN];
     postcard::to_slice(value, &mut report)?;
     Ok(report)

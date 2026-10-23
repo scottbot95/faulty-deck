@@ -42,7 +42,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 // TODO load this from Cargo.toml. Maybe need to write a source module in build.rs?
 const FIRMWARE_VERSION: (u8, u8, u8) = (0, 1, 0);
 // 1% of the available range (max+1 since we need the size of the range and zero is included)
-const SLIDER_DEADBAND: u16 = (MAX_SLIDER_VALUE + 1) / 100; // TODO make this configurable
+const SLIDER_DEADBAND: u16 = (MAX_SLIDER_VALUE + 1) / 100;
 const BUTTON_COUNT: usize = 4;
 const SLIDER_COUNT: u8 = 3;
 const DEBOUNCE: Duration = Duration::from_millis(10);
@@ -168,7 +168,6 @@ async fn hid_out_drain(mut hid: HidOut) {
                 };
                 match command {
                     Command::Sync => {
-                        // TODO actually refetch state instead of relying on existing state
                         state::force_change_signal();
                     }
                 }

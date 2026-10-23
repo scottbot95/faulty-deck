@@ -33,7 +33,6 @@ pub struct Opts {
     pub config_path: PathBuf,
 }
 
-// TODO read config from CLI
 pub async fn run(opts: Opts) -> anyhow::Result<()> {
     let config = ConfigStore::load(opts.config_path).await?;
     let (dispatch_tx, dispatch_rx) = mpsc::channel(64);

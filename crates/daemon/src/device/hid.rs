@@ -105,7 +105,6 @@ impl DeviceHandle for AsyncHidDevice {
     async fn state(&mut self) -> anyhow::Result<DeviceState> {
         let report = protocol::encode(&Command::Sync)?;
         self.device_handle.write_output_report(&report).await?;
-        // TODO update the firmware to allow forcing a fetch of fresh state
         self.next().await
     }
 
