@@ -1,9 +1,17 @@
 [device.buttons]
 #0.tap = { action = "key", chord = ["ctrl", "a"] }
 [device.buttons.0.tap]
-action = "command"
-program = "audio-headphones"
-
+#action = "command"
+#program = "audio-headphones"
+action = "sequence"
+actions = [
+    { action = "key", chord = ["ctrl","a"] },
+    { action = "key", chord = ["ctrl","c"] },
+    { action = "delay", ms = 1000 },
+    { action = "key", chord = ["backspace"] },
+    { action = "delay", ms = 1000 },
+    { action = "key", chord = ["ctrl","v"] }
+]
 
 [device.sliders]
 0.sink = "alsa_output.pci-0000_0c_00.4.analog-stereo"

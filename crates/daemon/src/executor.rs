@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::time::Duration;
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 use tracing::{error, warn, info, info_span, Instrument, debug};
 use daemon_core::action::{Action, AudioTarget, Volume, VolumeOp};
 use daemon_core::key::KeyCode;
@@ -56,6 +58,19 @@ impl<K: KeyInjector, A: AudioBackend> Executor<K, A> {
             },
             Action::Command { program, args, cwd, wait } => {
                 run_command(program, args, cwd.as_ref(), *wait).await
+            }
+            Action::Delay { ms, jitter } => {
+                let jitter_bound = (jitter / 2) as i32;
+                let sleep = ms.saturating_add_signed(rand::random_range(-jitter_bound..=jitter_bound));
+                tokio::time::sleep(Duration::from_millis(sleep as u64)).await;
+                Ok(())
+            }
+            Action::Sequence { actions } => {
+                for a in actions {
+                    // Need to box to avoid creating a recursive future
+                    Box::pin(self.do_action(a)).await?;
+                }
+                Ok(())
             }
         }
     }

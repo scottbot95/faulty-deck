@@ -26,6 +26,18 @@ pub enum Action {
         wait: bool,
     },
     Volume { target: AudioTarget, op: VolumeOp },
+
+    /// Execute a series of actions in sequence
+    Sequence {
+        actions: Vec<Action>,
+    },
+
+    /// Simply sleeps for a given duration
+    Delay {
+        ms: u32,
+        #[serde(default)]
+        jitter: u32,
+    }
 }
 
 /// Represents the target for audio actions.
