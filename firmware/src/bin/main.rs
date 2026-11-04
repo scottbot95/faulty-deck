@@ -14,7 +14,7 @@ use esp_hal::analog::adc::{Adc, AdcCalBasic, AdcConfig, Attenuation};
 use esp_hal::clock::CpuClock;
 use esp_hal::efuse::MacAddress;
 use esp_hal::gpio::{AnyPin, Input, InputConfig, Pull};
-use esp_hal::peripherals::{ADC1, GPIO1};
+use esp_hal::peripherals::{ADC1, GPIO1, GPIO2, GPIO4, GPIO5, LPWR};
 use esp_hal::rmt::Rmt;
 use esp_hal::timer::timg::TimerGroup;
 use heapless::String;
@@ -48,8 +48,8 @@ const _: () = assert!(
 
 // 1% of the available range (max+1 since we need the size of the range and zero is included)
 const SLIDER_DEADBAND: u16 = (MAX_SLIDER_VALUE + 1) / 100;
-const BUTTON_COUNT: usize = 4;
-const SLIDER_COUNT: u8 = 3;
+const BUTTON_COUNT: usize = 16;
+const SLIDER_COUNT: u8 = 4;
 const DEBOUNCE: Duration = Duration::from_millis(10);
 
 macro_rules! reserve_pins {
@@ -86,10 +86,22 @@ async fn main(spawner: Spawner) {
     reserve_pins!(peripherals; GPIO27, GPIO28, GPIO29, GPIO30, GPIO31, GPIO32, GPIO33, GPIO34, GPIO35, GPIO36, GPIO37);
 
     let button_pins: [AnyPin<'static>; BUTTON_COUNT] = [
-        peripherals.GPIO4.into(),
-        peripherals.GPIO5.into(),
         peripherals.GPIO6.into(),
         peripherals.GPIO7.into(),
+        peripherals.GPIO15.into(),
+        peripherals.GPIO16.into(),
+        peripherals.GPIO17.into(),
+        peripherals.GPIO18.into(),
+        peripherals.GPIO11.into(),
+        peripherals.GPIO12.into(),
+        peripherals.GPIO13.into(),
+        peripherals.GPIO21.into(),
+        peripherals.GPIO42.into(),
+        peripherals.GPIO41.into(),
+        peripherals.GPIO40.into(),
+        peripherals.GPIO39.into(),
+        peripherals.GPIO38.into(),
+        peripherals.GPIO14.into(),
     ];
 
     let mac = esp_hal::efuse::base_mac_address();
@@ -119,7 +131,7 @@ async fn main(spawner: Spawner) {
         spawner.spawn(button_task(Input::new(pin, pull_up), id as u8).unwrap());
     }
 
-    spawner.spawn(slider_task(peripherals.ADC1, peripherals.GPIO1).unwrap());
+    spawner.spawn(slider_task(peripherals.ADC1, peripherals.GPIO1, peripherals.GPIO2, peripherals.GPIO4, peripherals.GPIO5).unwrap());
 
     led.write(colors::GREEN, 10).await;
     info!("boot: Done!");
@@ -201,16 +213,26 @@ async fn button_task(mut pin: Input<'static>, id: u8) {
 }
 
 #[embassy_executor::task]
-async fn slider_task(adc: ADC1<'static>, pot0: GPIO1<'static>) {
+async fn slider_task(adc: ADC1<'static>, pot0: GPIO1<'static>, pot1: GPIO2<'static>, pot2: GPIO4<'static>, pot3: GPIO5<'static>) {
     let mut config = AdcConfig::new();
+
     let mut pot0 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot0, Attenuation::_11dB);
-    // let mut pot1 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot1, Attenuation::_11dB);
+    let mut pot1 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot1, Attenuation::_11dB);
+    let mut pot2 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot2, Attenuation::_11dB);
+    let mut pot3 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot3, Attenuation::_11dB);
+
     let mut adc = Adc::new(adc, config).into_async();
 
     loop {
+        // FIXME pots 1, 2, and 3 aren't working cuz I fucked the wiring
         let readings = [
             adc.read_oneshot(&mut pot0).await,
-            // adc.read_oneshot(&mut pot1).await
+            0,
+            // adc.read_oneshot(&mut pot1).await,
+            0,
+            // adc.read_oneshot(&mut pot2).await,
+            0,
+            // adc.read_oneshot(&mut pot3).await,
         ];
         let changed = firmware::state::update(|s| {
             let mut changed = false;
