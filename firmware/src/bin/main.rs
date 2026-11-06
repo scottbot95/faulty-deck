@@ -21,6 +21,7 @@ use heapless::String;
 use log::{error, info, trace, warn};
 use smart_leds::{brightness, colors};
 use static_cell::StaticCell;
+use firmware::commands::{spawn_command_task, CmdSender};
 use firmware::smart_led::{unsafe_write_led, SmartLed, SMART_LED_RATE};
 use firmware::state;
 use protocol::{Command, DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN, VERSION_STRING_MAX_LEN};
@@ -117,14 +118,16 @@ async fn main(spawner: Spawner) {
     info!("boot: fw=v{} serial={serial}", info.firmware_version);
     led.write(colors::YELLOW, 10).await;
 
-    let usb = init_usb(peripherals.USB_FS, peripherals.GPIO20, peripherals.GPIO19, serial, &info)
+    let cmd_tx = spawn_command_task(&spawner);
+
+    let usb = init_usb(peripherals.USB_FS, peripherals.GPIO20, peripherals.GPIO19, serial, &info, cmd_tx)
         .expect("Failed to initialize USB");
 
     static USB_DEVICE: StaticCell<Device> = StaticCell::new();
 
     spawner.spawn(usb_task(USB_DEVICE.init(usb.device)).unwrap());
     spawner.spawn(hid_writer_task(usb.hid_in).unwrap());
-    spawner.spawn(hid_out_drain(usb.hid_out).unwrap());
+    spawner.spawn(hid_out_drain(usb.hid_out, cmd_tx).unwrap());
 
     let pull_up = InputConfig::default().with_pull(Pull::Up);
     for (id, pin) in button_pins.into_iter().enumerate() {
@@ -172,7 +175,7 @@ async fn hid_writer_task(mut hid: HidIn) {
     clippy::large_stack_frames,
     reason = "IDK why this needs so much..."
 )]
-async fn hid_out_drain(mut hid: HidOut) {
+async fn hid_out_drain(mut hid: HidOut, tx: CmdSender) {
     let mut buf = [0u8; REPORT_LEN];
     loop {
         let result = hid.read(&mut buf).await;
@@ -183,11 +186,7 @@ async fn hid_out_drain(mut hid: HidOut) {
                     error!("hid_out_drain: failed to decode HID output report");
                     continue;
                 };
-                match command {
-                    Command::Sync => {
-                        state::force_change_signal();
-                    }
-                }
+                tx.send(command).await;
             }
             Err(e) => {
                 warn!("hid_out_drain: HID output report failed. Waiting for ready: {:?}", e);

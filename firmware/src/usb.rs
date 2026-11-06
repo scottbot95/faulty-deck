@@ -5,9 +5,11 @@ use embassy_usb::UsbDevice;
 use esp_hal::peripherals::USB_FS;
 use esp_hal::usb::otg::{Usb, UsbFsDm, UsbFsDp};
 use esp_hal::usb::otg::embassy_usb_device::{Config as OtgConfig, Driver};
+use log::warn;
 use static_cell::{ConstStaticCell, StaticCell};
 use usbd_hid::descriptor::SerializedDescriptor;
 use protocol::{Report, REPORT_LEN, DeviceInfo};
+use crate::commands::CmdSender;
 use crate::reports::VendorReport;
 
 pub type UsbDriver = Driver<'static>;
@@ -25,12 +27,16 @@ pub struct UsbParts {
 
 struct FeatureHandler {
     device_info: Report,
+    cmd_tx: CmdSender,
 }
 
 impl FeatureHandler {
-    pub fn new(info: &DeviceInfo) -> Result<Self, postcard::Error> {
+    pub fn new(info: &DeviceInfo, cmd_tx: CmdSender) -> Result<Self, postcard::Error> {
         let device_info = protocol::encode(info)?;
-        Ok(Self { device_info })
+        Ok(Self {
+            device_info,
+            cmd_tx
+        })
     }
 }
 
@@ -48,7 +54,21 @@ impl RequestHandler for FeatureHandler {
         Some(n)
     }
 
-    fn set_report(&mut self, _id: ReportId, _data: &[u8]) -> OutResponse {
+    fn set_report(&mut self, id: ReportId, data: &[u8]) -> OutResponse {
+        match id {
+            ReportId::Out(_) => {
+                let Ok(cmd) = protocol::decode(data) else {
+                    warn!("Received invalid command from host");
+                    return OutResponse::Rejected;
+                };
+                if self.cmd_tx.try_send(cmd).is_err() {
+                    warn!("Command channel full, dropping command {:?}", cmd);
+                }
+            }
+            _ => {
+                // Just ignore set report for non-Out SET_REPORT calls
+            }
+        }
         OutResponse::Accepted
     }
 }
@@ -59,6 +79,7 @@ pub fn init_usb(
     usb_dm: impl UsbFsDm + 'static,
     serial: &'static str,
     info: &DeviceInfo,
+    cmd_tx: CmdSender,
 ) -> Result<UsbParts, postcard::Error> {
     static EP_OUT_BUF: ConstStaticCell<[u8; 1024]> = ConstStaticCell::new([0; 1024]);
     static CONFIG_DESC: ConstStaticCell<[u8; 256]> = ConstStaticCell::new([0; 256]);
@@ -87,7 +108,7 @@ pub fn init_usb(
 
     let hid_config = hid::Config {
         report_descriptor: VendorReport::desc(),
-        request_handler: Some(FEATURE_HANDLER.init(FeatureHandler::new(info)?)),
+        request_handler: Some(FEATURE_HANDLER.init(FeatureHandler::new(info, cmd_tx)?)),
         poll_ms: 1,
         max_packet_size: REPORT_LEN as u16,
         hid_subclass: HidSubclass::No,
