@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod command;
+
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -49,13 +51,6 @@ pub struct DeviceState {
     pub buttons: u16,
     /// Array of slider values. Not all sliders are necessarily used.
     pub sliders: [u16; MAX_SLIDERS],
-}
-
-/// Output report: a command to the device from the daemon
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Command {
-    /// Force a resync, causing the device to send a full state report
-    Sync
 }
 
 impl DeviceState {

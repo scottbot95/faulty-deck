@@ -1,3 +1,4 @@
+use embassy_executor::Spawner;
 use embassy_usb::class::hid;
 use embassy_usb::class::hid::{HidBootProtocol, HidReader, HidReaderWriter, HidSubclass, HidWriter, ReportId, RequestHandler};
 use embassy_usb::control::OutResponse;
@@ -5,10 +6,11 @@ use embassy_usb::UsbDevice;
 use esp_hal::peripherals::USB_FS;
 use esp_hal::usb::otg::{Usb, UsbFsDm, UsbFsDp};
 use esp_hal::usb::otg::embassy_usb_device::{Config as OtgConfig, Driver};
-use log::warn;
+use log::{error, info, trace, warn};
 use static_cell::{ConstStaticCell, StaticCell};
 use usbd_hid::descriptor::SerializedDescriptor;
 use protocol::{Report, REPORT_LEN, DeviceInfo};
+use protocol::command::Command;
 use crate::commands::CmdSender;
 use crate::reports::VendorReport;
 
@@ -25,6 +27,7 @@ pub struct UsbParts {
     pub hid_out: HidOut,
 }
 
+#[derive(Copy, Clone)]
 struct FeatureHandler {
     device_info: Report,
     cmd_tx: CmdSender,
@@ -56,7 +59,7 @@ impl RequestHandler for FeatureHandler {
 
     fn set_report(&mut self, id: ReportId, data: &[u8]) -> OutResponse {
         match id {
-            ReportId::Out(_) => {
+            ReportId::Out(0) => {
                 let Ok(cmd) = protocol::decode(data) else {
                     warn!("Received invalid command from host");
                     return OutResponse::Rejected;
@@ -64,29 +67,31 @@ impl RequestHandler for FeatureHandler {
                 if self.cmd_tx.try_send(cmd).is_err() {
                     warn!("Command channel full, dropping command {:?}", cmd);
                 }
+                OutResponse::Accepted
             }
             _ => {
-                // Just ignore set report for non-Out SET_REPORT calls
+                OutResponse::Rejected
             }
         }
-        OutResponse::Accepted
     }
 }
 
 pub fn init_usb(
+    spawner: &Spawner,
     usb: USB_FS<'static>,
     usb_dp: impl UsbFsDp + 'static,
     usb_dm: impl UsbFsDm + 'static,
     serial: &'static str,
     info: &DeviceInfo,
     cmd_tx: CmdSender,
-) -> Result<UsbParts, postcard::Error> {
+) -> Result<(), postcard::Error> {
     static EP_OUT_BUF: ConstStaticCell<[u8; 1024]> = ConstStaticCell::new([0; 1024]);
     static CONFIG_DESC: ConstStaticCell<[u8; 256]> = ConstStaticCell::new([0; 256]);
     static BOS_DESC: ConstStaticCell<[u8; 256]> = ConstStaticCell::new([0; 256]);
     static CONTROL_BUF: ConstStaticCell<[u8; 64]> = ConstStaticCell::new([0; 64]);
     static HID_STATE: StaticCell<hid::State<'static>> = StaticCell::new();
     static FEATURE_HANDLER: StaticCell<FeatureHandler> = StaticCell::new();
+    static USB_DEVICE: StaticCell<Device> = StaticCell::new();
 
     let usb = Usb::new_fs(usb, usb_dp, usb_dm);
     let driver = Driver::new(usb, EP_OUT_BUF.take(), OtgConfig::default());
@@ -106,9 +111,11 @@ pub fn init_usb(
         CONTROL_BUF.take()
     );
 
+    let handler = FEATURE_HANDLER.init(FeatureHandler::new(info, cmd_tx)?);
+    let handler_2 = *handler;
     let hid_config = hid::Config {
         report_descriptor: VendorReport::desc(),
-        request_handler: Some(FEATURE_HANDLER.init(FeatureHandler::new(info, cmd_tx)?)),
+        request_handler: Some(handler),
         poll_ms: 1,
         max_packet_size: REPORT_LEN as u16,
         hid_subclass: HidSubclass::No,
@@ -120,10 +127,52 @@ pub fn init_usb(
         hid_config
     );
     let (hid_out, hid_in) = hid.split();
+    let device = USB_DEVICE.init(builder.build());
 
-    Ok(UsbParts {
-        device: builder.build(),
-        hid_in,
-        hid_out,
-    })
+    spawner.spawn(usb_task(device).unwrap());
+    spawner.spawn(hid_writer_task(hid_in).unwrap());
+    spawner.spawn(hid_out_drain(hid_out, handler_2).unwrap());
+
+    Ok(())
+}
+
+
+
+/// Run Embassy USB stack.
+#[embassy_executor::task]
+async fn usb_task(device: &'static mut Device) {
+    info!("Starting USB stack");
+    device.run().await
+}
+
+/// Consumes events from the [`EventReceiver`] and writes them to the HID device.
+#[embassy_executor::task]
+#[allow(
+    clippy::large_stack_frames,
+    reason = "IDK why this needs so much..."
+)]
+async fn hid_writer_task(mut hid: HidIn) {
+    loop {
+        info!("hid_writer: Waiting for state change");
+        crate::state::changed().await;
+        info!("hid_writer: Writing output report");
+        if hid.write(&crate::state::report()).await.is_err() {
+            warn!("hid_writer: HID report failed, waiting until ready");
+            // If the write failed, that means we don't have an active connection to a host
+            hid.ready().await;
+            info!("hid_writer: HidOut ready");
+            let _ = hid.write(&crate::state::report()).await;
+            info!("hid_writer: HID report sent");
+        }
+    }
+}
+
+/// Consumes commands from the HID host and executes them
+#[embassy_executor::task]
+#[allow(
+    clippy::large_stack_frames,
+    reason = "IDK why this needs so much..."
+)]
+async fn hid_out_drain(mut hid: HidOut, mut handler: FeatureHandler) {
+    hid.run(false, &mut handler).await;
 }

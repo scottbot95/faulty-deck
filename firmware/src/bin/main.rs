@@ -23,8 +23,7 @@ use smart_leds::{brightness, colors};
 use static_cell::StaticCell;
 use firmware::commands::{spawn_command_task, CmdSender};
 use firmware::smart_led::{unsafe_write_led, SmartLed, SMART_LED_RATE};
-use firmware::state;
-use protocol::{Command, DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN, VERSION_STRING_MAX_LEN};
+use protocol::{DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN, VERSION_STRING_MAX_LEN};
 use firmware::usb::{init_usb, Device, HidIn, HidOut};
 
 #[panic_handler]
@@ -120,14 +119,15 @@ async fn main(spawner: Spawner) {
 
     let cmd_tx = spawn_command_task(&spawner);
 
-    let usb = init_usb(peripherals.USB_FS, peripherals.GPIO20, peripherals.GPIO19, serial, &info, cmd_tx)
-        .expect("Failed to initialize USB");
-
-    static USB_DEVICE: StaticCell<Device> = StaticCell::new();
-
-    spawner.spawn(usb_task(USB_DEVICE.init(usb.device)).unwrap());
-    spawner.spawn(hid_writer_task(usb.hid_in).unwrap());
-    spawner.spawn(hid_out_drain(usb.hid_out, cmd_tx).unwrap());
+    init_usb(
+        &spawner,
+        peripherals.USB_FS,
+        peripherals.GPIO20,
+        peripherals.GPIO19,
+        serial,
+        &info,
+        cmd_tx
+    ).expect("Failed to initialize USB");
 
     let pull_up = InputConfig::default().with_pull(Pull::Up);
     for (id, pin) in button_pins.into_iter().enumerate() {
@@ -138,63 +138,6 @@ async fn main(spawner: Spawner) {
 
     led.write(colors::GREEN, 10).await;
     info!("boot: Done!");
-}
-
-/// Run Embassy USB stack.
-#[embassy_executor::task]
-async fn usb_task(device: &'static mut Device) {
-    info!("Starting USB stack");
-    device.run().await
-}
-
-/// Consumes events from the [`EventReceiver`] and writes them to the HID device.
-#[embassy_executor::task]
-#[allow(
-    clippy::large_stack_frames,
-    reason = "IDK why this needs so much..."
-)]
-async fn hid_writer_task(mut hid: HidIn) {
-    loop {
-        info!("hid_writer: Waiting for state change");
-        firmware::state::changed().await;
-        info!("hid_writer: Writing output report");
-        if hid.write(&firmware::state::report()).await.is_err() {
-            warn!("hid_writer: HID report failed, waiting until ready");
-            // If the write failed, that means we don't have an active connection to a host
-            hid.ready().await;
-            info!("hid_writer: HidOut ready");
-            let _ = hid.write(&firmware::state::report()).await;
-            info!("hid_writer: HID report sent");
-        }
-    }
-}
-
-/// Consumes commands from the HID host and executes them
-#[embassy_executor::task]
-#[allow(
-    clippy::large_stack_frames,
-    reason = "IDK why this needs so much..."
-)]
-async fn hid_out_drain(mut hid: HidOut, tx: CmdSender) {
-    let mut buf = [0u8; REPORT_LEN];
-    loop {
-        let result = hid.read(&mut buf).await;
-        match result {
-            Ok(_) => {
-                trace!("hid_out_drain: HID output report received");
-                let Ok(command) = protocol::decode::<Command>(&buf) else {
-                    error!("hid_out_drain: failed to decode HID output report");
-                    continue;
-                };
-                tx.send(command).await;
-            }
-            Err(e) => {
-                warn!("hid_out_drain: HID output report failed. Waiting for ready: {:?}", e);
-                hid.ready().await;
-                info!("hid_out_drain: HidOut ready");
-            }
-        }
-    }
 }
 
 #[embassy_executor::task(pool_size = BUTTON_COUNT)]

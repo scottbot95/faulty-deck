@@ -2,7 +2,8 @@ use anyhow::Context;
 use async_hid::{AsyncHidFeatureHandle, AsyncHidRead, AsyncHidWrite, DeviceEvent, DeviceFeatureHandle, DeviceId, DeviceReaderWriter, HidBackend};
 use futures_lite::{Stream, StreamExt};
 use tracing::{debug, trace};
-use protocol::{Command, DeviceInfo, DeviceState};
+use protocol::{DeviceInfo, DeviceState};
+use protocol::command::Command;
 use crate::device::{DeviceHandle, DeviceSource, HotplugEvent};
 
 pub struct AsyncHidSource {
