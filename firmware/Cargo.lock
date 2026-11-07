@@ -1087,6 +1087,7 @@ dependencies = [
  "esp-hal-smartled",
  "esp-println",
  "esp-rtos",
+ "esp-storage",
  "heapless 0.9.3",
  "log",
  "postcard",

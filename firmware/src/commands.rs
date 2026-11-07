@@ -1,4 +1,4 @@
-use crate::state;
+use crate::{boot, state};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
@@ -26,6 +26,7 @@ async fn command_task(rx: Receiver<'static, CriticalSectionRawMutex, Command, CH
         match rx.receive().await {
             Command::Sync => {
                 state::force_change_signal();
+                boot::HOST_SYNCED.signal(());
             }
             Command::EnterBootloader(_) => {
                 // Small delay to ensure the host has time to see the ACK for the report that triggered this

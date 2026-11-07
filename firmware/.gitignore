@@ -1,0 +1,4 @@
+# ESP-IDF bootloader builder
+boot/build/
+boot/sdkconfig
+boot/sdkconfig.old

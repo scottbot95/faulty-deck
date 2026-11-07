@@ -1,0 +1,7 @@
+[flash]
+mode = "dio"
+size = "16MB"
+
+[idf]
+bootloader = "boot/bootloader-rollback.bin"
+partition_table = "partitions.csv"

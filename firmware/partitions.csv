@@ -1,0 +1,6 @@
+# Name,   Type, SubType,    Offset,   Size
+settings, data, nvs,        0x9000,   0x10000
+otadata,  data, ota,        0x19000,  0x2000
+ota_0,    app,  ota_0,      0x20000,  0x400000
+ota_1,    app,  ota_1,      0x420000, 0x400000
+storage,  data, undefined,  0x820000, 0x7e0000

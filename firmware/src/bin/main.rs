@@ -9,18 +9,21 @@
 
 use core::fmt::Write;
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use embassy_time::{with_timeout, Duration, Timer};
 use esp_hal::analog::adc::{Adc, AdcCalBasic, AdcConfig, Attenuation};
 use esp_hal::clock::CpuClock;
 use esp_hal::efuse::MacAddress;
 use esp_hal::gpio::{AnyPin, Input, InputConfig, Pull};
-use esp_hal::peripherals::{ADC1, GPIO1, GPIO2, GPIO4, GPIO5, LPWR};
+use esp_hal::peripherals;
+use esp_hal::peripherals::{ADC1, FLASH, GPIO1, GPIO2, GPIO4, GPIO5, LPWR, TIMG1};
 use esp_hal::rmt::Rmt;
-use esp_hal::timer::timg::TimerGroup;
+use esp_hal::timer::timg::{MwdtStage, TimerGroup, Wdt};
 use heapless::String;
 use log::{error, info, trace, warn};
 use smart_leds::{brightness, colors};
 use static_cell::StaticCell;
+use firmware::boot;
+use firmware::boot::BootKind;
 use firmware::commands::{spawn_command_task, CmdSender};
 use firmware::smart_led::{unsafe_write_led, SmartLed, SMART_LED_RATE};
 use protocol::{DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN, VERSION_STRING_MAX_LEN};
@@ -32,7 +35,14 @@ fn panic(panic_info: &core::panic::PanicInfo) -> ! {
 
     unsafe_write_led(brightness([colors::RED].into_iter(), 1));
 
-    loop {}
+    match boot::boot_kind() {
+        BootKind::Trial | BootKind::Unknown => loop {},
+        BootKind::Normal | BootKind::RolledBack => {
+            // Disable the watchdog to prevent marking this partition as bad and resetting
+            Wdt::<TIMG1<'static>>::new().disable();
+            loop {}
+        }
+    }
 }
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -51,6 +61,13 @@ const SLIDER_DEADBAND: u16 = (MAX_SLIDER_VALUE + 1) / 100;
 const BUTTON_COUNT: usize = 16;
 const SLIDER_COUNT: u8 = 4;
 const DEBOUNCE: Duration = Duration::from_millis(10);
+const STATUS_LED_BRIGHTNESS: u8 = 10;
+/// Timeout to wait after the first boot of a new image before marking it as good
+const CONFIRM_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout for the watchdog to wait before marking ota partition as bad and resetting the device
+const WATCHDOG_TIMEOUT: esp_hal::time::Duration = esp_hal::time::Duration::from_secs(5);
+/// Interval to feed the watchdog
+const WATCHDOG_FEED_INTERVAL: Duration = Duration::from_secs(1);
 
 macro_rules! reserve_pins {
     ($peripherals:ident; $($pin:ident),+ $(,)?) => {
@@ -68,16 +85,24 @@ async fn main(spawner: Spawner) {
     info!("boot: Hello!");
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let peripherals = esp_hal::init(config);
+    let mut peripherals = esp_hal::init(config);
 
     // Immediately start the RTOS so we can start using async code
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
+    let boot_kind = boot::check(peripherals.FLASH.reborrow());
+
+    let mut wdt = TimerGroup::new(peripherals.TIMG1).wdt;
+    wdt.set_timeout(MwdtStage::Stage0, WATCHDOG_TIMEOUT);
+    wdt.enable();
+    spawner.spawn(watchdog_task(wdt).unwrap());
+
     // Build LED immediately after starting the RTOS so we can use it to indicate boot state
     let rmt = Rmt::new(peripherals.RMT, SMART_LED_RATE).unwrap().into_async();
     let mut led = SmartLed::new(rmt.channel0, peripherals.GPIO48);
-    led.write(colors::ORANGE, 10).await;
+    let boot_color = if boot_kind == BootKind::Trial { colors::BLUE } else { colors::ORANGE };
+    led.write(boot_color, STATUS_LED_BRIGHTNESS).await;
     info!("boot: Initializing peripherals");
 
     // Strapping pins (can mess with boot so we should avoid using them outside of boot)
@@ -115,7 +140,7 @@ async fn main(spawner: Spawner) {
     };
 
     info!("boot: fw=v{} serial={serial}", info.firmware_version);
-    led.write(colors::YELLOW, 10).await;
+    led.write(colors::YELLOW, STATUS_LED_BRIGHTNESS).await;
 
     let cmd_tx = spawn_command_task(&spawner);
 
@@ -136,8 +161,38 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(slider_task(peripherals.ADC1, peripherals.GPIO1, peripherals.GPIO2, peripherals.GPIO4, peripherals.GPIO5).unwrap());
 
-    led.write(colors::GREEN, 10).await;
+    match boot_kind {
+        BootKind::Normal | BootKind::Unknown => led.write(colors::GREEN, STATUS_LED_BRIGHTNESS).await,
+        BootKind::Trial => {
+            led.write(colors::BLUE, STATUS_LED_BRIGHTNESS).await;
+            spawner.spawn(confirm_task(peripherals.FLASH, led).unwrap());
+        }
+        BootKind::RolledBack => led.write(colors::MAGENTA, STATUS_LED_BRIGHTNESS).await,
+    }
     info!("boot: Done!");
+}
+
+/// Marks the running image valid once the host has synced or after [`CONFIRM_TIMEOUT`]
+#[embassy_executor::task]
+async fn confirm_task(flash: FLASH<'static>, mut led: SmartLed<'static, esp_hal::Async>) {
+    if with_timeout(CONFIRM_TIMEOUT, boot::HOST_SYNCED.wait()).await.is_err() {
+        info!("no host sync within {}s", CONFIRM_TIMEOUT.as_secs());
+    }
+    match boot::confirm(flash) {
+        Ok(()) => {
+            info!("image marked valid");
+            led.write(colors::GREEN, STATUS_LED_BRIGHTNESS).await;
+        }
+        Err(e) => error!("failed to mark image valid: {:?}", e)
+    }
+}
+
+#[embassy_executor::task]
+async fn watchdog_task(mut wdt: Wdt<TIMG1<'static>>) {
+    loop {
+        wdt.feed();
+        Timer::after(WATCHDOG_FEED_INTERVAL).await;
+    }
 }
 
 #[embassy_executor::task(pool_size = BUTTON_COUNT)]
