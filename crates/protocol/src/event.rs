@@ -1,16 +1,17 @@
+use postcard_schema::Schema;
 use serde::{Deserialize, Serialize};
 use crate::DeviceState;
 
 #[cfg(doc)]
 use crate::command::Command;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Schema)]
 pub enum Event {
     State(DeviceState),
     Update(UpdateEvent),
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Schema)]
 pub enum UpdateEvent {
     /// Bytes [0, offset) are accepted. Send the next chunk as `offset`.
     Ack { offset: u32 },
@@ -20,7 +21,7 @@ pub enum UpdateEvent {
     Committed,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Schema)]
 pub enum UpdateError {
     NotStarted,
     AlreadyStarted,

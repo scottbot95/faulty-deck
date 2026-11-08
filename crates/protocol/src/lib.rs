@@ -2,12 +2,14 @@
 
 pub mod command;
 pub mod event;
+pub mod wireshark;
 
 #[cfg(feature = "std")]
 extern crate std;
 
 use core::array::TryFromSliceError;
 use core::fmt::{Display, Formatter};
+use postcard_schema::Schema;
 use serde::{Deserialize, Serialize};
 
 pub fn reading_to_hue(raw_value: u16) -> u8 {
@@ -22,7 +24,7 @@ pub const MAX_SLIDER_VALUE: u16 = 4095;
 pub const VERSION_STRING_MAX_LEN: usize = 16;
 pub const UPDATE_CHUNK_LEN: usize = 56;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize, Schema)]
 pub struct Serial([u8; 6]);
 
 impl TryFrom<&[u8]> for Serial {
@@ -47,7 +49,7 @@ impl Display for Serial {
 }
 
 /// Input report: the complete current state of the controls.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Schema)]
 pub struct DeviceState {
     /// Bitmask of buttons currently pressed. Not all buttons are necessarily used.
     pub buttons: u16,
@@ -72,14 +74,14 @@ impl DeviceState {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Schema)]
 pub enum Slot {
     Factory,
     Ota0,
     Ota1,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Schema)]
 pub enum UpdateResult {
     None,
     /// The bootloader rolled back an update after it was never confirmed (eg it panicked during boot).
@@ -88,7 +90,7 @@ pub enum UpdateResult {
     Invalid,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Schema)]
 pub struct DeviceInfo {
     /// Protocol version spoken by the device
     pub protocol_version: u16,

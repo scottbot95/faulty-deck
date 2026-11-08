@@ -7,6 +7,7 @@
       <sourceFolder url="file://$MODULE_DIR$/firmware/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/daemon/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/protocol/examples" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/firmware/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

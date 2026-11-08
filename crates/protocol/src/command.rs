@@ -1,3 +1,5 @@
+use postcard_schema::Schema;
+use postcard_schema::schema::NamedType;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 use crate::{UPDATE_CHUNK_LEN, VERSION_STRING_MAX_LEN};
@@ -13,7 +15,7 @@ const REBOOT_MAGIC: [u8; 4] = *b"RST!";
 ///
 /// **IMPORTANT**: Since the command index is part of the wire protocol, reordering or removing
 /// variants is a breaking change and must be done with care (renaming is fine).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Schema)]
 pub enum Command {
     /// Force a resync, causing the device to send a full state report
     Sync,
@@ -22,7 +24,7 @@ pub enum Command {
     EnterBootloader(BootloaderMagic),
 
     /// Start firmware update
-    UpdateBeing {
+    UpdateBegin {
         size: u32,
         sha256: [u8; 32],
         version: heapless::String<VERSION_STRING_MAX_LEN>,
@@ -42,6 +44,7 @@ pub enum Command {
     Reboot(RebootMagic),
 }
 
+
 macro_rules! magic_number_impl {
     ($ty_name:ident, $value:expr, $name:expr) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +60,10 @@ macro_rules! magic_number_impl {
             fn default() -> Self {
                 Self::new()
             }
+        }
+
+        impl Schema for $ty_name {
+            const SCHEMA: &'static NamedType = <[u8; 4]>::SCHEMA;
         }
 
         impl Serialize for $ty_name {

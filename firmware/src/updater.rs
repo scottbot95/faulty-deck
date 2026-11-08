@@ -82,7 +82,7 @@ impl Updater {
                 warn!("Unexpected command sent to OTA Updater");
                 return;
             }
-            Command::UpdateBeing { size, sha256, version } => self.begin(size, sha256, &version),
+            Command::UpdateBegin { size, sha256, version } => self.begin(size, sha256, &version),
             Command::UpdateChunk { offset, data } => self.chunk(offset, &data).await,
             Command::UpdateCommit => self.commit().await,
             Command::UpdateAbort => {
