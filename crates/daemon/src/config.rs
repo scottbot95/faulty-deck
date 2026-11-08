@@ -1,14 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use anyhow::Context;
 use notify::{EventKind, RecursiveMode, Watcher};
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, info, warn};
 use daemon_core::config::Config;
 
 pub struct ConfigStore {
-    path: PathBuf,
     tx: watch::Sender<Arc<Config>>
 }
 
@@ -34,7 +32,7 @@ impl ConfigStore {
 
         spawn_watcher(&path, tx.clone())?;
 
-        Ok(Self { path, tx })
+        Ok(Self { tx })
     }
     
     pub fn subscribe(&self) -> watch::Receiver<Arc<Config>> {

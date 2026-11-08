@@ -14,20 +14,19 @@ use esp_hal::analog::adc::{Adc, AdcCalBasic, AdcConfig, Attenuation};
 use esp_hal::clock::CpuClock;
 use esp_hal::efuse::MacAddress;
 use esp_hal::gpio::{AnyPin, Input, InputConfig, Pull};
-use esp_hal::peripherals;
-use esp_hal::peripherals::{ADC1, FLASH, GPIO1, GPIO2, GPIO4, GPIO5, LPWR, TIMG1};
+use esp_hal::peripherals::{ADC1, GPIO1, GPIO2, GPIO4, GPIO5, TIMG1};
 use esp_hal::rmt::Rmt;
 use esp_hal::timer::timg::{MwdtStage, TimerGroup, Wdt};
 use heapless::String;
-use log::{error, info, trace, warn};
+use log::{error, info};
 use smart_leds::{brightness, colors};
 use static_cell::StaticCell;
-use firmware::boot;
+use firmware::{boot, updater};
 use firmware::boot::BootKind;
-use firmware::commands::{spawn_command_task, CmdSender};
+use firmware::commands::spawn_command_task;
 use firmware::smart_led::{unsafe_write_led, SmartLed, SMART_LED_RATE};
-use protocol::{DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, REPORT_LEN, VERSION_STRING_MAX_LEN};
-use firmware::usb::{init_usb, Device, HidIn, HidOut};
+use protocol::{DeviceInfo, MAX_SLIDER_VALUE, PROTOCOL_VERSION, VERSION_STRING_MAX_LEN};
+use firmware::usb::init_usb;
 
 #[panic_handler]
 fn panic(panic_info: &core::panic::PanicInfo) -> ! {
@@ -91,7 +90,8 @@ async fn main(spawner: Spawner) {
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
-    let boot_kind = boot::check(peripherals.FLASH.reborrow());
+    let boot_info = boot::check(peripherals.FLASH.reborrow());
+    let boot_kind = boot_info.kind;
 
     let mut wdt = TimerGroup::new(peripherals.TIMG1).wdt;
     wdt.set_timeout(MwdtStage::Stage0, WATCHDOG_TIMEOUT);
@@ -137,13 +137,17 @@ async fn main(spawner: Spawner) {
         buttons: button_pins.len() as u8,
         sliders: SLIDER_COUNT,
         serial: mac.as_bytes().try_into().unwrap(),
+        running_slot: boot_info.running_slot,
+        last_update_result: boot_info.last_update_result,
+        failed_version: boot_info.failed_version,
     };
 
     info!("boot: fw=v{} serial={serial}", info.firmware_version);
     led.write(colors::YELLOW, STATUS_LED_BRIGHTNESS).await;
 
-    let cmd_tx = spawn_command_task(&spawner);
+    firmware::info::set(&info).expect("DeviceInfo too large");
 
+    let cmd_tx = spawn_command_task(&spawner, peripherals.FLASH);
     init_usb(
         &spawner,
         peripherals.USB_FS,
@@ -165,7 +169,7 @@ async fn main(spawner: Spawner) {
         BootKind::Normal | BootKind::Unknown => led.write(colors::GREEN, STATUS_LED_BRIGHTNESS).await,
         BootKind::Trial => {
             led.write(colors::BLUE, STATUS_LED_BRIGHTNESS).await;
-            spawner.spawn(confirm_task(peripherals.FLASH, led).unwrap());
+            spawner.spawn(confirm_task(led).unwrap());
         }
         BootKind::RolledBack => led.write(colors::MAGENTA, STATUS_LED_BRIGHTNESS).await,
     }
@@ -174,11 +178,12 @@ async fn main(spawner: Spawner) {
 
 /// Marks the running image valid once the host has synced or after [`CONFIRM_TIMEOUT`]
 #[embassy_executor::task]
-async fn confirm_task(flash: FLASH<'static>, mut led: SmartLed<'static, esp_hal::Async>) {
+async fn confirm_task(mut led: SmartLed<'static, esp_hal::Async>) {
     if with_timeout(CONFIRM_TIMEOUT, boot::HOST_SYNCED.wait()).await.is_err() {
         info!("no host sync within {}s", CONFIRM_TIMEOUT.as_secs());
     }
-    match boot::confirm(flash) {
+    updater::CONFIRM.signal(());
+    match updater::CONFIRMED.wait().await {
         Ok(()) => {
             info!("image marked valid");
             led.write(colors::GREEN, STATUS_LED_BRIGHTNESS).await;
@@ -214,9 +219,9 @@ async fn slider_task(adc: ADC1<'static>, pot0: GPIO1<'static>, pot1: GPIO2<'stat
     let mut config = AdcConfig::new();
 
     let mut pot0 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot0, Attenuation::_11dB);
-    let mut pot1 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot1, Attenuation::_11dB);
-    let mut pot2 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot2, Attenuation::_11dB);
-    let mut pot3 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot3, Attenuation::_11dB);
+    let _pot1 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot1, Attenuation::_11dB);
+    let _pot2 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot2, Attenuation::_11dB);
+    let _pot3 = config.enable_pin_with_cal::<_, AdcCalBasic<_>>(pot3, Attenuation::_11dB);
 
     let mut adc = Adc::new(adc, config).into_async();
 

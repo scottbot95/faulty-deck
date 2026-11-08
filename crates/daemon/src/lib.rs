@@ -1,10 +1,9 @@
-use std::cell::LazyCell;
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 use crate::config::ConfigStore;
 use crate::device::DeviceManager;
 use crate::device::hid::AsyncHidSource;
-use crate::executor::{Executor, LoggingAudio, LoggingKeyInjector};
+use crate::executor::Executor;
 use tokio::sync::{broadcast, mpsc};
 use crate::platform::enigo::EnigoKeyInjector;
 use crate::platform::linux::PulseAudioBackend;
@@ -39,8 +38,10 @@ pub async fn run(opts: Opts) -> anyhow::Result<()> {
     let (events_tx, _events_rx) = broadcast::channel(256);
 
     let executor = Executor::new(
-        EnigoKeyInjector::new()?,
-        PulseAudioBackend::spawn(),
+        executor::LoggingKeyInjector,
+        executor::LoggingAudio,
+        // EnigoKeyInjector::new()?,
+        // PulseAudioBackend::spawn(),
         dispatch_rx
     );
     let manager = DeviceManager::new(

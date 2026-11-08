@@ -4,6 +4,7 @@ use futures_lite::{Stream, StreamExt};
 use tracing::{debug, trace};
 use protocol::{DeviceInfo, DeviceState};
 use protocol::command::Command;
+use protocol::event::Event;
 use crate::device::{DeviceHandle, DeviceSource, HotplugEvent};
 
 pub struct AsyncHidSource {
@@ -72,7 +73,7 @@ impl DeviceSource for AsyncHidSource {
     }
 
     async fn open(&self, id: &DeviceId) -> anyhow::Result<Self::Handle> {
-        let device = self.backend.query_devices(&id)
+        let device = self.backend.query_devices(id)
             .await?
             .find(device_filter)
             .context("Device not found")?;
@@ -111,9 +112,15 @@ impl DeviceHandle for AsyncHidDevice {
 
     async fn next(&mut self) -> anyhow::Result<DeviceState> {
         let mut buf: protocol::Report = [0u8; 64];
-        self.device_handle.read_input_report(&mut buf).await?;
-        let decoded = protocol::decode::<DeviceState>(&buf)?;
-        trace!("Device state: {:?}", decoded);
-        Ok(decoded)
+        loop {
+            self.device_handle.read_input_report(&mut buf).await?;
+            match protocol::decode::<Event>(&buf)?  {
+                Event::State(decoded) => {
+                    trace!("Device state: {:?}", decoded);
+                    return Ok(decoded);
+                }
+                event => debug!("Ignoring device event: {:?}", event)
+            }
+        }
     }
 }

@@ -243,12 +243,13 @@ impl<H: DeviceHandle> DeviceSession<H> {
 
     async fn emit_events(&self, events: &[DeviceEvent]) {
         for event in events {
+            debug!(device=%self.device_info.serial, "Emitted event: {:?}", event);
             let envelope = DeviceEventEnvelope::new(self.device_info.serial, *event);
             // Events channel is purely informational, so we don't care if it's full
             let _ = self.channels.events.send(envelope);
 
             if let Some(action) = self.event_to_action(*event) {
-                debug!("Device({}) emitting action: {:?}", self.device_info.serial, action);
+                debug!(device=%self.device_info.serial, "Emitting action: {:?}", action);
 
                 if let Err(e) = self.channels.dispatch.send(action).await {
                     error!("Failed to send event to dispatch channel: {:?}", e.0);

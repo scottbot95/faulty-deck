@@ -5,9 +5,8 @@ use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
-use tokio::task::JoinSet;
 use tracing::{error, warn, info, info_span, Instrument, debug};
-use daemon_core::action::{Action, AudioTarget, Volume, VolumeOp};
+use daemon_core::action::{Action, AudioTarget, VolumeOp};
 use daemon_core::key::KeyCode;
 
 pub trait KeyInjector {

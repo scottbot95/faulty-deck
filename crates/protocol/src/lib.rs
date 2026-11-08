@@ -1,6 +1,7 @@
 #![no_std]
 
 pub mod command;
+pub mod event;
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -13,12 +14,13 @@ pub fn reading_to_hue(raw_value: u16) -> u8 {
     ((raw_value as u32 * 240 / 360) >> 4) as u8
 }
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const REPORT_LEN: usize = 64;
 pub const MAX_SLIDERS: usize = 4;
 
 pub const MAX_SLIDER_VALUE: u16 = 4095;
 pub const VERSION_STRING_MAX_LEN: usize = 16;
+pub const UPDATE_CHUNK_LEN: usize = 56;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Serial([u8; 6]);
@@ -70,6 +72,22 @@ impl DeviceState {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Slot {
+    Factory,
+    Ota0,
+    Ota1,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateResult {
+    None,
+    /// The bootloader rolled back an update after it was never confirmed (eg it panicked during boot).
+    Aborted,
+    /// The updated firmware marked itself as invalid
+    Invalid,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfo {
     /// Protocol version spoken by the device
@@ -88,6 +106,15 @@ pub struct DeviceInfo {
 
     /// Serial number of the device. Typically just the MAC address efuse
     pub serial: Serial,
+
+    /// App partition the device booted from, if it could be determined
+    pub running_slot: Option<Slot>,
+
+    /// Outcome of the last update, if it failed,
+    pub last_update_result: UpdateResult,
+
+    /// Firmware version of the update that failed
+    pub failed_version: Option<heapless::String<VERSION_STRING_MAX_LEN>>,
 }
 
 pub type Report = [u8; REPORT_LEN];

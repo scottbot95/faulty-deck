@@ -1,4 +1,7 @@
 use embassy_executor::Spawner;
+use embassy_futures::select::{select, Either};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::{Channel, TrySendError};
 use embassy_usb::class::hid;
 use embassy_usb::class::hid::{HidBootProtocol, HidReader, HidReaderWriter, HidSubclass, HidWriter, ReportId, RequestHandler};
 use embassy_usb::control::OutResponse;
@@ -9,8 +12,8 @@ use esp_hal::usb::otg::embassy_usb_device::{Config as OtgConfig, Driver};
 use log::{error, info, trace, warn};
 use static_cell::{ConstStaticCell, StaticCell};
 use usbd_hid::descriptor::SerializedDescriptor;
-use protocol::{Report, REPORT_LEN, DeviceInfo};
-use protocol::command::Command;
+use protocol::{REPORT_LEN, DeviceInfo, Report};
+use protocol::event::Event;
 use crate::commands::CmdSender;
 use crate::reports::VendorReport;
 
@@ -19,6 +22,7 @@ pub type Device = UsbDevice<'static, UsbDriver>;
 pub type HidIn = HidWriter<'static, UsbDriver, REPORT_LEN>;
 pub type HidOut = HidReader<'static, UsbDriver, REPORT_LEN>;
 
+pub static EVENTS: Channel<CriticalSectionRawMutex, Event, 4> = Channel::new();
 
 /// Collection of various pieces of the USB stack for spawning independent tasks
 pub struct UsbParts {
@@ -29,17 +33,12 @@ pub struct UsbParts {
 
 #[derive(Copy, Clone)]
 struct FeatureHandler {
-    device_info: Report,
     cmd_tx: CmdSender,
 }
 
 impl FeatureHandler {
-    pub fn new(info: &DeviceInfo, cmd_tx: CmdSender) -> Result<Self, postcard::Error> {
-        let device_info = protocol::encode(info)?;
-        Ok(Self {
-            device_info,
-            cmd_tx
-        })
+    fn new(cmd_tx: CmdSender) -> Self {
+        Self { cmd_tx }
     }
 }
 
@@ -49,7 +48,7 @@ impl RequestHandler for FeatureHandler {
     fn get_report(&mut self, id: ReportId, buf: &mut [u8]) -> Option<usize> {
         let report = match id {
             ReportId::In(_) => crate::state::report(),
-            ReportId::Feature(_) => self.device_info,
+            ReportId::Feature(_) => crate::info::report(),
             _ => return None,
         };
         let n = report.len().min(buf.len());
@@ -64,7 +63,7 @@ impl RequestHandler for FeatureHandler {
                     warn!("Received invalid command from host");
                     return OutResponse::Rejected;
                 };
-                if self.cmd_tx.try_send(cmd).is_err() {
+                if let Err(TrySendError::Full(cmd)) = self.cmd_tx.try_send(cmd) {
                     warn!("Command channel full, dropping command {:?}", cmd);
                 }
                 OutResponse::Accepted
@@ -93,6 +92,8 @@ pub fn init_usb(
     static FEATURE_HANDLER: StaticCell<FeatureHandler> = StaticCell::new();
     static USB_DEVICE: StaticCell<Device> = StaticCell::new();
 
+    crate::info::set(info)?;
+
     let usb = Usb::new_fs(usb, usb_dp, usb_dm);
     let driver = Driver::new(usb, EP_OUT_BUF.take(), OtgConfig::default());
 
@@ -111,7 +112,7 @@ pub fn init_usb(
         CONTROL_BUF.take()
     );
 
-    let handler = FEATURE_HANDLER.init(FeatureHandler::new(info, cmd_tx)?);
+    let handler = FEATURE_HANDLER.init(FeatureHandler::new(cmd_tx));
     let handler_2 = *handler;
     let hid_config = hid::Config {
         report_descriptor: VendorReport::desc(),
@@ -154,25 +155,44 @@ async fn usb_task(device: &'static mut Device) {
 async fn hid_writer_task(mut hid: HidIn) {
     loop {
         info!("hid_writer: Waiting for state change");
-        crate::state::changed().await;
-        info!("hid_writer: Writing output report");
-        if hid.write(&crate::state::report()).await.is_err() {
-            warn!("hid_writer: HID report failed, waiting until ready");
-            // If the write failed, that means we don't have an active connection to a host
-            hid.ready().await;
-            info!("hid_writer: HidOut ready");
-            let _ = hid.write(&crate::state::report()).await;
-            info!("hid_writer: HID report sent");
+        match select(crate::state::changed(), EVENTS.receive()).await {
+            Either::First(()) => {
+                info!("hid_writer: Writing output report");
+                write_report(&mut hid, crate::state::report).await;
+
+                // Non-blocking quick loop to drain events
+                while let Ok(event) = EVENTS.try_receive() {
+                    write_event(&mut hid, &event).await;
+                }
+            }
+            Either::Second(event) => write_event(&mut hid, &event).await,
         }
+        crate::state::changed().await;
+
+    }
+}
+
+async fn write_event(hid: &mut HidIn, event: &Event) {
+    trace!("hid_writer: Writing event {:?}", event);
+    match protocol::encode(event) {
+        Ok(report) => write_report(hid, || report).await,
+        Err(e) => error!("hid_writer: failed to encode event: {:?}", e),
+    }
+}
+
+async fn write_report(hid: &mut HidIn, report_fn: impl Fn() -> Report) {
+    if hid.write(&report_fn()).await.is_err() {
+        warn!("hid_writer: HID report failed, waiting until ready");
+        // If the write failed, that means we don't have an active connection to a host
+        hid.ready().await;
+        info!("hid_writer: HidOut ready");
+        let _ = hid.write(&report_fn()).await;
+        info!("hid_writer: HID report sent");
     }
 }
 
 /// Consumes commands from the HID host and executes them
 #[embassy_executor::task]
-#[allow(
-    clippy::large_stack_frames,
-    reason = "IDK why this needs so much..."
-)]
-async fn hid_out_drain(mut hid: HidOut, mut handler: FeatureHandler) {
+async fn hid_out_drain(hid: HidOut, mut handler: FeatureHandler) {
     hid.run(false, &mut handler).await;
 }

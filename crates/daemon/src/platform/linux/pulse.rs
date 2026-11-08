@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result, Context as _};
 use libpulse_binding::callbacks::ListResult;
 use libpulse_binding::context::{Context, FlagSet, State};
-use libpulse_binding::context::introspect::{Introspector, SinkInfo};
+use libpulse_binding::context::introspect::Introspector;
 use libpulse_binding::mainloop::threaded::Mainloop;
 use libpulse_binding::proplist::{properties, Proplist};
 use libpulse_binding::volume::{ChannelVolumes, Volume as PaVolume};
@@ -38,7 +38,7 @@ impl Command {
 /// - Spawn a blocking, non-tokio background thread which owns the [`Mainloop`].
 /// - The `PulseAudioBackend` communicates commands and receives replies via tokio channels.
 /// - The event loop thread then sends a command to libpulse with a callback that uses
-///     the `std` blocking channels to send the reply back to the mainloop thread.
+///   the `std` blocking channels to send the reply back to the mainloop thread.
 ///
 /// The mainloop thread using blocking channels *should* be fine since the commands we use are
 /// generally quick. If that changes we made need to adapt this design.

@@ -3,6 +3,7 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use protocol::{DeviceState, Report};
+use protocol::event::Event;
 
 static CURRENT: Mutex<CriticalSectionRawMutex, Cell<DeviceState>> =
     Mutex::new(Cell::new(DeviceState::INITIAL));
@@ -13,7 +14,7 @@ pub fn current() -> DeviceState {
 }
 
 pub fn report() -> Report {
-    protocol::encode(&current()).expect("DeviceState too large")
+    protocol::encode(&Event::State(current())).expect("DeviceState too large")
 }
 
 /// Blocks until the device state has changed
