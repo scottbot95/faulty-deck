@@ -24,6 +24,7 @@
           fileset = lib.fileset.unions [
             ../Cargo.toml
             ../Cargo.lock
+            ../crates/protocol/src/wireshark/template.lua
             (craneLib.fileset.commonCargoSources ../crates)
           ];
         };
