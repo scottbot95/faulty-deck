@@ -17,6 +17,7 @@ use esp_hal::gpio::{AnyPin, Input, InputConfig, Pull};
 use esp_hal::peripherals::{ADC1, GPIO1, GPIO2, GPIO4, GPIO5, TIMG1};
 use esp_hal::rmt::Rmt;
 use esp_hal::timer::timg::{MwdtStage, TimerGroup, Wdt};
+use esp_storage::FlashStorage;
 use heapless::String;
 use log::{error, info};
 use smart_leds::{brightness, colors};
@@ -84,13 +85,14 @@ async fn main(spawner: Spawner) {
     info!("boot: Hello!");
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let mut peripherals = esp_hal::init(config);
+    let peripherals = esp_hal::init(config);
 
     // Immediately start the RTOS so we can start using async code
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
-    let boot_info = boot::check(peripherals.FLASH.reborrow());
+    let mut flash = FlashStorage::new(peripherals.FLASH);
+    let boot_info = boot::check(&mut flash);
     let boot_kind = boot_info.kind;
 
     let mut wdt = TimerGroup::new(peripherals.TIMG1).wdt;
@@ -147,7 +149,7 @@ async fn main(spawner: Spawner) {
 
     firmware::info::set(&info).expect("DeviceInfo too large");
 
-    let cmd_tx = spawn_command_task(&spawner, peripherals.FLASH);
+    let cmd_tx = spawn_command_task(&spawner, flash);
     init_usb(
         &spawner,
         peripherals.USB_FS,

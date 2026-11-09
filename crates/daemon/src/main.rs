@@ -1,5 +1,6 @@
-use crate::cli::Cli;
+use crate::cli::{Cli, Cmd};
 use clap::Parser;
+use daemon::ota::UpdateOpts;
 
 mod cli;
 
@@ -12,5 +13,8 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    daemon::run(args.into()).await
+    match args.command {
+        Some(Cmd::Update { image }) => daemon::ota::update(UpdateOpts { image }).await,
+        None => daemon::run(args.into()).await,
+    }
 }

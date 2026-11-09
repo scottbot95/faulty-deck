@@ -13,6 +13,7 @@ mod device;
 mod executor;
 mod config;
 mod platform;
+pub mod ota;
 
 #[cfg(target_os = "linux")]
 pub type Etcetera = etcetera::app_strategy::Xdg;
@@ -38,10 +39,10 @@ pub async fn run(opts: Opts) -> anyhow::Result<()> {
     let (events_tx, _events_rx) = broadcast::channel(256);
 
     let executor = Executor::new(
-        executor::LoggingKeyInjector,
-        executor::LoggingAudio,
-        // EnigoKeyInjector::new()?,
-        // PulseAudioBackend::spawn(),
+        // executor::LoggingKeyInjector,
+        // executor::LoggingAudio,
+        EnigoKeyInjector::new()?,
+        PulseAudioBackend::spawn(),
         dispatch_rx
     );
     let manager = DeviceManager::new(

@@ -9,12 +9,14 @@ use tokio::select;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::{AbortHandle, JoinSet};
 use tokio_stream::{Stream, StreamExt};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use daemon_core::action::{Action, Volume, VolumeOp};
 use daemon_core::config::Config;
 use daemon_core::event::DeviceEvent;
 use daemon_core::tracker::DeviceTracker;
 use protocol::{DeviceInfo, DeviceState, Serial, MAX_SLIDER_VALUE, PROTOCOL_VERSION};
+use protocol::command::Command;
+use protocol::event::Event;
 use crate::event::DeviceEventEnvelope;
 
 pub enum HotplugEvent {
@@ -34,15 +36,38 @@ pub trait DeviceSource {
 }
 
 /// Represents an open connection to an HID device.
-pub trait DeviceHandle {
+pub trait DeviceHandle: Send {
     /// Fetch the device's advertised metadata.
     fn info(&mut self) -> impl Future<Output=Result<DeviceInfo>> + Send;
 
     /// Fetch the current state of the device.
-    fn state(&mut self) -> impl Future<Output=Result<DeviceState>> + Send;
+    fn state(&mut self) -> impl Future<Output=Result<DeviceState>> + Send {
+        async move {
+            self.send(&Command::Sync).await?;
+            self.next().await
+        }
+    }
 
     /// Blocks until the next input report is received.
-    fn next(&mut self) -> impl Future<Output=Result<DeviceState>> + Send;
+    fn next(&mut self) -> impl Future<Output=Result<DeviceState>> + Send {
+        async move {
+            loop {
+                match self.event().await? {
+                    Event::State(state) => {
+                        trace!("Device state: {:?}", state);
+                        return Ok(state);
+                    }
+                    event => debug!("Ignoring device event: {:?}", event),
+                }
+            }
+        }
+    }
+
+    /// Send a command to the device
+    fn send(&mut self, command: &Command) -> impl Future<Output=Result<()>> + Send;
+
+    /// Blocks until the next input report of any kind is received.
+    fn event(&mut self) -> impl Future<Output=Result<Event>> + Send;
 }
 
 #[derive(Clone)]

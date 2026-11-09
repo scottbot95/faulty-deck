@@ -5,7 +5,6 @@ use esp_bootloader_esp_idf::ota::OtaImageState;
 use esp_bootloader_esp_idf::ota_updater::OtaUpdater;
 use esp_bootloader_esp_idf::partitions;
 use esp_bootloader_esp_idf::partitions::{Error, PARTITION_TABLE_MAX_LEN, AppPartitionSubType, PartitionType};
-use esp_hal::peripherals::FLASH;
 use esp_storage::FlashStorage;
 use heapless::String;
 use log::{info, warn};
@@ -70,12 +69,11 @@ fn slot(app: AppPartitionSubType) -> Option<Slot> {
 }
 
 /// Check the boot kind from flash
-pub fn check(flash: FLASH<'_>) -> BootInfo {
-    let mut flash = FlashStorage::new(flash);
+pub fn check(flash: &mut FlashStorage<'_>) -> BootInfo {
     let mut buffer: [u8; PARTITION_TABLE_MAX_LEN] = [0; _];
 
     let mut running_slot = None;
-    match partitions::read_partition_table(&mut flash, &mut buffer) {
+    match partitions::read_partition_table(flash, &mut buffer) {
         Ok(table) => match table.booted_partition() {
             Ok(Some(booted)) => {
                 info!("boot: booted partition {}", booted.label_as_str());
@@ -90,7 +88,7 @@ pub fn check(flash: FLASH<'_>) -> BootInfo {
     }
 
     let mut selected_partition = None;
-    let (kind, last_update_result) = match OtaUpdater::new(&mut flash, &mut buffer) {
+    let (kind, last_update_result) = match OtaUpdater::new(flash, &mut buffer) {
         Ok(mut ota) => {
             // Check which partition is selected
             match ota.selected_partition() {
@@ -127,7 +125,7 @@ pub fn check(flash: FLASH<'_>) -> BootInfo {
     let failed_version = match selected_partition {
         Some(selected) if kind == BootKind::RolledBack && slot(selected) != running_slot => {
             // Read the firmware version of the failed partition from flash
-            read_app_version(&mut flash, &mut buffer, selected)
+            read_app_version(flash, &mut buffer, selected)
         }
         _ => None,
     };

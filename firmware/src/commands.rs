@@ -4,8 +4,9 @@ use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::Timer;
-use esp_hal::peripherals::{FLASH, LPWR};
+use esp_hal::peripherals::LPWR;
 use esp_hal::system::software_reset;
+use esp_storage::FlashStorage;
 use protocol::command::Command;
 use static_cell::StaticCell;
 use crate::updater::{Updater, CONFIRM};
@@ -15,7 +16,7 @@ pub static COMMAND_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, Command,
 
 pub type CmdSender = Sender<'static, CriticalSectionRawMutex, Command, CHANNEL_SIZE>;
 
-pub fn spawn_command_task(spawner: &Spawner, flash: FLASH<'static>) -> Sender<'static, CriticalSectionRawMutex, Command, CHANNEL_SIZE> {
+pub fn spawn_command_task(spawner: &Spawner, flash: FlashStorage<'static>) -> Sender<'static, CriticalSectionRawMutex, Command, CHANNEL_SIZE> {
     let channel = COMMAND_CHANNEL.init(Channel::new());
 
     spawner.spawn(command_task(channel.receiver(), Updater::new(flash)).unwrap());

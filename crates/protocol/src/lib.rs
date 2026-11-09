@@ -2,6 +2,8 @@
 
 pub mod command;
 pub mod event;
+
+#[cfg(feature = "std")]
 pub mod wireshark;
 
 #[cfg(feature = "std")]

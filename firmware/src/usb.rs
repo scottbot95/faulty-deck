@@ -9,7 +9,7 @@ use embassy_usb::UsbDevice;
 use esp_hal::peripherals::USB_FS;
 use esp_hal::usb::otg::{Usb, UsbFsDm, UsbFsDp};
 use esp_hal::usb::otg::embassy_usb_device::{Config as OtgConfig, Driver};
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use static_cell::{ConstStaticCell, StaticCell};
 use usbd_hid::descriptor::SerializedDescriptor;
 use protocol::{REPORT_LEN, DeviceInfo, Report};
@@ -154,7 +154,7 @@ async fn usb_task(device: &'static mut Device) {
 )]
 async fn hid_writer_task(mut hid: HidIn) {
     loop {
-        info!("hid_writer: Waiting for state change");
+        debug!("hid_writer: Waiting for state change");
         match select(crate::state::changed(), EVENTS.receive()).await {
             Either::First(()) => {
                 info!("hid_writer: Writing output report");
@@ -167,8 +167,6 @@ async fn hid_writer_task(mut hid: HidIn) {
             }
             Either::Second(event) => write_event(&mut hid, &event).await,
         }
-        crate::state::changed().await;
-
     }
 }
 

@@ -6,7 +6,6 @@ use esp_bootloader_esp_idf::ota::OtaImageState;
 use esp_bootloader_esp_idf::ota_updater::OtaUpdater;
 use esp_bootloader_esp_idf::partitions;
 use esp_bootloader_esp_idf::partitions::{AppPartitionSubType, FlashStorage, PartitionEntry, PARTITION_TABLE_MAX_LEN, Error, PartitionType};
-use esp_hal::peripherals::{FLASH,};
 use log::{error, info, warn};
 use sha2::{Digest, Sha256};
 use static_cell::ConstStaticCell;
@@ -59,12 +58,12 @@ pub struct Updater {
 }
 
 impl Updater {
-    pub fn new(flash: FLASH<'static>) -> Self {
+    pub fn new(flash: FlashStorage<'static>) -> Self {
         static TABLE: ConstStaticCell<[u8; PARTITION_TABLE_MAX_LEN]> = ConstStaticCell::new([0; _]);
         static SECTOR: ConstStaticCell<[u8; SECTOR_LEN]> = ConstStaticCell::new([0; _]);
 
         Self {
-            flash: FlashStorage::new(flash),
+            flash,
             table: TABLE.take(),
             sector: SECTOR.take(),
             state: UpdaterState::Idle,
@@ -199,6 +198,7 @@ impl Updater {
         transfer.written += transfer.buffered as u32;
         transfer.buffered = 0;
 
+        info!("updater: Transfer received {} of {} bytes", transfer.received(), transfer.size);
         // Flushing is a blocking operation which may have taken a while.
         // Yield back to the runtime to ensure other tasks get a chance to run.
         embassy_futures::yield_now().await;

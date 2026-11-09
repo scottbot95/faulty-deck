@@ -104,23 +104,15 @@ impl DeviceHandle for AsyncHidDevice {
         Ok(device_info)
     }
 
-    async fn state(&mut self) -> anyhow::Result<DeviceState> {
-        let report = protocol::encode(&Command::Sync)?;
+    async fn send(&mut self, command: &Command) -> anyhow::Result<()> {
+        let report = protocol::encode(command)?;
         self.device_handle.write_output_report(&report).await?;
-        self.next().await
+        Ok(())
     }
 
-    async fn next(&mut self) -> anyhow::Result<DeviceState> {
-        let mut buf: protocol::Report = [0u8; 64];
-        loop {
-            self.device_handle.read_input_report(&mut buf).await?;
-            match protocol::decode::<Event>(&buf)?  {
-                Event::State(decoded) => {
-                    trace!("Device state: {:?}", decoded);
-                    return Ok(decoded);
-                }
-                event => debug!("Ignoring device event: {:?}", event)
-            }
-        }
+    async fn event(&mut self) -> anyhow::Result<Event> {
+        let mut buf: protocol::Report = [0; _];
+        self.device_handle.read_input_report(&mut buf).await?;
+        Ok(protocol::decode::<Event>(&buf)?)
     }
 }

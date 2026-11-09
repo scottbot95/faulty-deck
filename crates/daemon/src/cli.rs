@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use clap_verbosity_flag::InfoLevel;
 use etcetera::AppStrategy;
 use daemon::{Opts, ETCETERA};
@@ -11,6 +11,17 @@ pub struct Cli {
 
     #[arg(short, long)]
     pub config_file: Option<PathBuf>,
+
+    #[command(subcommand)]
+    pub command: Option<Cmd>
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Cmd {
+    /// Flash a firmware image to the device over the OTA protocol. Stop any running daemon first.
+    Update {
+        image: PathBuf,
+    }
 }
 
 impl From<Cli> for Opts {

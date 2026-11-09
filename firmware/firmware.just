@@ -23,7 +23,12 @@ flash profile='release': (build profile)
 
 # Save the app image usedd for OTA updates
 image profile='release': (build profile)
-  espflash save-image --chip {{chip}} target/firmware.bin
+  espflash save-image --chip {{chip}} {{elf}} target/firmware.bin
+
+# Flash the device using the A/B OTA protocol. Make sure the Daemon isn't running.
+[working-directory: '..']
+update profile='release': (image profile)
+  cargo run -p daemon --release -- update firmware/target/firmware.bin
 
 # Erase the otadata so the bootloader fails back to ota_0
 reset-slots:
